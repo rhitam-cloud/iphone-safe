@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Book Store Billing (Autocomplete)</title>
+<title>Book Store Billing (CSV Working)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
@@ -30,6 +30,7 @@ button{
     color:white;
     border:none;
     border-radius:5px;
+    cursor:pointer;
 }
 button.red{
     background:#e74c3c;
@@ -56,8 +57,6 @@ small{color:#555}
     display:none;
     max-height:150px;
     overflow-y:auto;
-    position:relative;
-    z-index:10;
 }
 .sug-item{
     padding:8px;
@@ -68,8 +67,8 @@ small{color:#555}
 }
 </style>
 </head>
-<body>
 
+<body>
 <div class="container">
 
 <h2>Add Book (Manual)</h2>
@@ -77,9 +76,9 @@ small{color:#555}
 <input id="bookPrice" type="number" placeholder="Price">
 <button onclick="addBook()">Save Book</button>
 
-<h2>Import Books (CSV – iPhone Safe)</h2>
+<h2>Import Books (CSV)</h2>
 <input type="file" accept=".csv" onchange="importCSV(this.files[0])">
-<small>Excel → Save As → CSV (Book Name, Price)</small>
+<small>CSV format: Book Name,Price</small>
 
 <h3>Saved Books</h3>
 <select id="bookSelect"></select>
@@ -88,7 +87,6 @@ small{color:#555}
 <hr>
 
 <h2>Create Bill</h2>
-
 <input id="billBook" placeholder="Type book name" autocomplete="off">
 <div id="suggestions"></div>
 
@@ -115,7 +113,6 @@ small{color:#555}
 <h3>Net: ₹ <span id="net">0</span></h3>
 
 <button class="red" onclick="clearBill()">Clear Bill</button>
-
 </div>
 
 <script>
@@ -125,45 +122,63 @@ let gross = 0;
 /* ---------- BOOK SECTION ---------- */
 function addBook(){
     const name = bookName.value.trim();
-    const price = Number(bookPrice.value);
-    if(!name || !price){
-        alert("Enter book name and price");
+    const price = parseFloat(bookPrice.value);
+
+    if(name === "" || isNaN(price)){
+        alert("Enter valid book name and price");
         return;
     }
+
     books.push({name, price});
-    bookName.value="";
-    bookPrice.value="";
+    bookName.value = "";
+    bookPrice.value = "";
     refreshBooks();
 }
 
+/* ✅ FIXED CSV IMPORT */
 function importCSV(file){
-    if(!file) return;
+    if(!file){
+        alert("No file selected");
+        return;
+    }
+
     const reader = new FileReader();
+
     reader.onload = function(e){
-        const lines = e.target.result.split(/\\r?\\n/);
+        const text = e.target.result.trim();
+        const lines = text.split(/\r?\n/);
+
+        if(lines.length <= 1){
+            alert("Invalid CSV file");
+            return;
+        }
+
         lines.slice(1).forEach(line=>{
+            if(!line.trim()) return;
+
             const parts = line.split(",");
-            if(parts.length >= 2){
-                const name = parts[0].trim();
-                const price = Number(parts[1]);
-                if(name && price){
-                    books.push({name, price});
-                }
+            const name = parts[0].replace(/"/g,"").trim();
+            const price = parseFloat(parts[1]);
+
+            if(name !== "" && !isNaN(price)){
+                books.push({name, price});
             }
         });
+
         refreshBooks();
         alert("Books imported successfully");
     };
+
     reader.readAsText(file);
 }
 
 function deleteBook(){
-    const idx = bookSelect.selectedIndex;
-    if(idx < 0){
+    const i = bookSelect.selectedIndex;
+    if(i < 0){
         alert("Select a book");
         return;
     }
-    books.splice(idx,1);
+    books.splice(i,1);
     refreshBooks();
 }
 
@@ -171,63 +186,61 @@ function refreshBooks(){
     bookSelect.innerHTML="";
     books.forEach(b=>{
         const o = document.createElement("option");
-        o.text = b.name;
-        bookSelect.add(o);
+        o.textContent = b.name;
+        bookSelect.appendChild(o);
     });
 }
 
 /* ---------- AUTOCOMPLETE ---------- */
-const billInput = document.getElementById("billBook");
-const sugBox = document.getElementById("suggestions");
+billBook.addEventListener("input",()=>{
+    const val = billBook.value.toLowerCase();
+    suggestions.innerHTML = "";
 
-billInput.addEventListener("input", ()=>{
-    const val = billInput.value.toLowerCase();
-    sugBox.innerHTML="";
     if(!val){
-        sugBox.style.display="none";
+        suggestions.style.display="none";
         return;
     }
 
-    const matched = books.filter(b =>
+    const matches = books.filter(b =>
         b.name.toLowerCase().includes(val)
     );
 
-    if(matched.length === 0){
-        sugBox.style.display="none";
+    if(matches.length === 0){
+        suggestions.style.display="none";
         return;
     }
 
-    matched.forEach(b=>{
+    matches.forEach(b=>{
         const div = document.createElement("div");
-        div.className="sug-item";
+        div.className = "sug-item";
         div.textContent = b.name;
         div.onclick = ()=>{
-            billInput.value = b.name;
+            billBook.value = b.name;
             billPrice.value = b.price;
-            sugBox.style.display="none";
+            suggestions.style.display = "none";
         };
-        sugBox.appendChild(div);
+        suggestions.appendChild(div);
     });
 
-    sugBox.style.display="block";
+    suggestions.style.display = "block";
 });
 
 /* ---------- BILL SECTION ---------- */
 function addToBill(){
     const name = billBook.value;
-    const price = Number(billPrice.value);
-    const quantity = Number(qty.value);
+    const price = parseFloat(billPrice.value);
+    const q = parseInt(qty.value);
 
-    if(!name || !price || quantity <= 0){
-        alert("Enter valid bill details");
+    if(name === "" || isNaN(price) || isNaN(q) || q <= 0){
+        alert("Invalid bill details");
         return;
     }
 
-    const total = price * quantity;
+    const total = price * q;
     gross += total;
 
     const row = billBody.insertRow();
-    row.insertCell(0).innerText = quantity;
+    row.insertCell(0).innerText = q;
     row.insertCell(1).innerText = name;
     row.insertCell(2).innerText = price;
     row.insertCell(3).innerText = total;
@@ -245,18 +258,12 @@ function addToBill(){
 
 function editRow(btn){
     const row = btn.parentElement.parentElement;
-    const oldQty = Number(row.cells[0].innerText);
-    const oldPrice = Number(row.cells[2].innerText);
     const oldTotal = Number(row.cells[3].innerText);
 
-    const newQty = prompt("New Quantity", oldQty);
-    const newPrice = prompt("New Price", oldPrice);
+    const newQty = prompt("New Quantity", row.cells[0].innerText);
+    const newPrice = prompt("New Price", row.cells[2].innerText);
 
-    if(newQty === null || newPrice === null) return;
-    if(isNaN(newQty) || isNaN(newPrice) || newQty <= 0){
-        alert("Invalid values");
-        return;
-    }
+    if(isNaN(newQty) || isNaN(newPrice) || newQty <= 0) return;
 
     const newTotal = newQty * newPrice;
     row.cells[0].innerText = newQty;
@@ -270,15 +277,14 @@ function editRow(btn){
 
 function deleteRow(btn){
     const row = btn.parentElement.parentElement;
-    const total = Number(row.cells[3].innerText);
-    gross -= total;
+    gross -= Number(row.cells[3].innerText);
     row.remove();
     document.getElementById("gross").innerText = gross;
     calcNet();
 }
 
 function calcNet(){
-    const d = Number(discount.value) || 0;
+    const d = parseFloat(discount.value) || 0;
     const disc = gross * d / 100;
     discAmt.innerText = disc.toFixed(2);
     net.innerText = (gross - disc).toFixed(2);
@@ -288,13 +294,11 @@ function clearBill(){
     if(!confirm("Clear bill?")) return;
     billBody.innerHTML="";
     gross = 0;
-    document.getElementById("gross").innerText = "0";
+    gross.innerText = "0";
     discAmt.innerText = "0";
     net.innerText = "0";
-    discount.value = "";
+    discount.value="";
 }
 </script>
-
 </body>
 </html>
-
