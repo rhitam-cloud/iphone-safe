@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Book Store Billing (Autocomplete)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    background:#f4f6f8;
+    padding:15px;
+}
+.container{
+    max-width:900px;
+    margin:auto;
+    background:#fff;
+    padding:20px;
+    border-radius:10px;
+}
+h2,h3{margin-top:20px}
+input,select,button{
+    width:100%;
+    padding:10px;
+    margin:6px 0;
+    font-size:16px;
+}
+button{
+    background:#3498db;
+    color:white;
+    border:none;
+    border-radius:5px;
+}
+button.red{
+    background:#e74c3c;
+}
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:15px;
+}
+th,td{
+    border:1px solid #ddd;
+    padding:8px;
+    text-align:center;
+}
+th{
+    background:#ecf0f1;
+}
+small{color:#555}
+
+/* AUTOCOMPLETE */
+#suggestions{
+    border:1px solid #ccc;
+    background:#fff;
+    display:none;
+    max-height:150px;
+    overflow-y:auto;
+    position:relative;
+    z-index:10;
+}
+.sug-item{
+    padding:8px;
+    cursor:pointer;
+}
+.sug-item:hover{
+    background:#f0f0f0;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<h2>Add Book (Manual)</h2>
+<input id="bookName" placeholder="Book name">
+<input id="bookPrice" type="number" placeholder="Price">
+<button onclick="addBook()">Save Book</button>
+
+<h2>Import Books (CSV – iPhone Safe)</h2>
+<input type="file" accept=".csv" onchange="importCSV(this.files[0])">
+<small>Excel → Save As → CSV (Book Name, Price)</small>
+
+<h3>Saved Books</h3>
+<select id="bookSelect"></select>
+<button class="red" onclick="deleteBook()">Delete Selected Book</button>
+
+<hr>
+
+<h2>Create Bill</h2>
+
+<input id="billBook" placeholder="Type book name" autocomplete="off">
+<div id="suggestions"></div>
+
+<input id="billPrice" type="number" placeholder="Price">
+<input id="qty" type="number" placeholder="Quantity">
+<button onclick="addToBill()">Add to Bill</button>
+
+<table>
+<thead>
+<tr>
+<th>Qty</th>
+<th>Book</th>
+<th>Price</th>
+<th>Total</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody id="billBody"></tbody>
+</table>
+
+<p>Gross: ₹ <span id="gross">0</span></p>
+<input id="discount" type="number" placeholder="Discount %" oninput="calcNet()">
+<p>Discount Amount: ₹ <span id="discAmt">0</span></p>
+<h3>Net: ₹ <span id="net">0</span></h3>
+
+<button class="red" onclick="clearBill()">Clear Bill</button>
+
+</div>
+
+<script>
+let books = [];
+let gross = 0;
+
+/* ---------- BOOK SECTION ---------- */
+function addBook(){
+    const name = bookName.value.trim();
+    const price = Number(bookPrice.value);
+    if(!name || !price){
+        alert("Enter book name and price");
+        return;
+    }
+    books.push({name, price});
+    bookName.value="";
+    bookPrice.value="";
+    refreshBooks();
+}
+
+function importCSV(file){
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e){
+        const lines = e.target.result.split(/\\r?\\n/);
+        lines.slice(1).forEach(line=>{
+            const parts = line.split(",");
+            if(parts.length >= 2){
+                const name = parts[0].trim();
+                const price = Number(parts[1]);
+                if(name && price){
+                    books.push({name, price});
+                }
+            }
+        });
+        refreshBooks();
+        alert("Books imported successfully");
+    };
+    reader.readAsText(file);
+}
+
+function deleteBook(){
+    const idx = bookSelect.selectedIndex;
+    if(idx < 0){
+        alert("Select a book");
+        return;
+    }
+    books.splice(idx,1);
+    refreshBooks();
+}
+
+function refreshBooks(){
+    bookSelect.innerHTML="";
+    books.forEach(b=>{
+        const o = document.createElement("option");
+        o.text = b.name;
+        bookSelect.add(o);
+    });
+}
+
+/* ---------- AUTOCOMPLETE ---------- */
+const billInput = document.getElementById("billBook");
+const sugBox = document.getElementById("suggestions");
+
+billInput.addEventListener("input", ()=>{
+    const val = billInput.value.toLowerCase();
+    sugBox.innerHTML="";
+    if(!val){
+        sugBox.style.display="none";
+        return;
+    }
+
+    const matched = books.filter(b =>
+        b.name.toLowerCase().includes(val)
+    );
+
+    if(matched.length === 0){
+        sugBox.style.display="none";
+        return;
+    }
+
+    matched.forEach(b=>{
+        const div = document.createElement("div");
+        div.className="sug-item";
+        div.textContent = b.name;
+        div.onclick = ()=>{
+            billInput.value = b.name;
+            billPrice.value = b.price;
+            sugBox.style.display="none";
+        };
+        sugBox.appendChild(div);
+    });
+
+    sugBox.style.display="block";
+});
+
+/* ---------- BILL SECTION ---------- */
+function addToBill(){
+    const name = billBook.value;
+    const price = Number(billPrice.value);
+    const quantity = Number(qty.value);
+
+    if(!name || !price || quantity <= 0){
+        alert("Enter valid bill details");
+        return;
+    }
+
+    const total = price * quantity;
+    gross += total;
+
+    const row = billBody.insertRow();
+    row.insertCell(0).innerText = quantity;
+    row.insertCell(1).innerText = name;
+    row.insertCell(2).innerText = price;
+    row.insertCell(3).innerText = total;
+    row.insertCell(4).innerHTML =
+        `<button onclick="editRow(this)">Edit</button>
+         <button class="red" onclick="deleteRow(this)">Delete</button>`;
+
+    document.getElementById("gross").innerText = gross;
+    calcNet();
+
+    billBook.value="";
+    billPrice.value="";
+    qty.value="";
+}
+
+function editRow(btn){
+    const row = btn.parentElement.parentElement;
+    const oldQty = Number(row.cells[0].innerText);
+    const oldPrice = Number(row.cells[2].innerText);
+    const oldTotal = Number(row.cells[3].innerText);
+
+    const newQty = prompt("New Quantity", oldQty);
+    const newPrice = prompt("New Price", oldPrice);
+
+    if(newQty === null || newPrice === null) return;
+    if(isNaN(newQty) || isNaN(newPrice) || newQty <= 0){
+        alert("Invalid values");
+        return;
+    }
+
+    const newTotal = newQty * newPrice;
+    row.cells[0].innerText = newQty;
+    row.cells[2].innerText = newPrice;
+    row.cells[3].innerText = newTotal;
+
+    gross = gross - oldTotal + newTotal;
+    document.getElementById("gross").innerText = gross;
+    calcNet();
+}
+
+function deleteRow(btn){
+    const row = btn.parentElement.parentElement;
+    const total = Number(row.cells[3].innerText);
+    gross -= total;
+    row.remove();
+    document.getElementById("gross").innerText = gross;
+    calcNet();
+}
+
+function calcNet(){
+    const d = Number(discount.value) || 0;
+    const disc = gross * d / 100;
+    discAmt.innerText = disc.toFixed(2);
+    net.innerText = (gross - disc).toFixed(2);
+}
+
+function clearBill(){
+    if(!confirm("Clear bill?")) return;
+    billBody.innerHTML="";
+    gross = 0;
+    document.getElementById("gross").innerText = "0";
+    discAmt.innerText = "0";
+    net.innerText = "0";
+    discount.value = "";
+}
+</script>
+
+</body>
+</html>
